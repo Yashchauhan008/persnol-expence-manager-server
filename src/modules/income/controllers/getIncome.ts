@@ -4,13 +4,14 @@ import { ServerError } from '../../../core/ServerError.class';
 
 export async function getIncome(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const result = await query(
       `SELECT i.id, i.amount, i.source, i.note,
         to_char(i.date::date, 'YYYY-MM-DD') AS date,
         i.created_at, i.updated_at
-       FROM incomes i WHERE i.id = $1`,
-      [id]
+       FROM incomes i WHERE i.id = $1 AND i.user_id = $2`,
+      [id, userId]
     );
 
     if (result.rowCount === 0) {

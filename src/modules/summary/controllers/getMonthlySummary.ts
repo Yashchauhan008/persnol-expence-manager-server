@@ -3,11 +3,15 @@ import { query } from '../../../service/database';
 
 export async function getMonthlySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const now = new Date();
     const year = parseInt((req.query.year as string) || String(now.getFullYear()), 10);
     const month = parseInt((req.query.month as string) || String(now.getMonth() + 1), 10);
 
     const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+
+    const basicParams = [userId, year, month];
+    const dailyParams = [userId, monthStart, year, month];
 
     const [
       incomeResult,
@@ -21,46 +25,48 @@ export async function getMonthlySummary(req: Request, res: Response, next: NextF
     ] = await Promise.all([
       query<{ total: string }>(
         `SELECT COALESCE(SUM(amount), 0) as total FROM incomes
-         WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
-        [year, month]
+         WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3`,
+        basicParams
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-         WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
-        [year, month]
+         WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3`,
+        basicParams
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(amount), 0) as total FROM loans
-         WHERE type = 'given' AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
-        [year, month]
+         WHERE user_id = $1 AND type = 'given'
+         AND EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3`,
+        basicParams
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(amount), 0) as total FROM loans
-         WHERE type = 'taken' AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
-        [year, month]
+         WHERE user_id = $1 AND type = 'taken'
+         AND EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3`,
+        basicParams
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(s.amount), 0) as total
          FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given'
-         WHERE EXTRACT(YEAR FROM s.date) = $1 AND EXTRACT(MONTH FROM s.date) = $2`,
-        [year, month]
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+         WHERE EXTRACT(YEAR FROM s.date) = $2 AND EXTRACT(MONTH FROM s.date) = $3`,
+        basicParams
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(s.amount), 0) as total
          FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-         WHERE EXTRACT(YEAR FROM s.date) = $1 AND EXTRACT(MONTH FROM s.date) = $2`,
-        [year, month]
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+         WHERE EXTRACT(YEAR FROM s.date) = $2 AND EXTRACT(MONTH FROM s.date) = $3`,
+        basicParams
       ),
       query<{ tag_id: string; tag_name: string; color: string; total: string }>(
         `SELECT t.id as tag_id, t.name as tag_name, t.color, COALESCE(SUM(e.amount), 0) as total
          FROM expenses e
          JOIN expense_tags et ON e.id = et.expense_id
-         JOIN tags t ON et.tag_id = t.id
-         WHERE EXTRACT(YEAR FROM e.date) = $1 AND EXTRACT(MONTH FROM e.date) = $2
+         JOIN tags t ON et.tag_id = t.id AND t.user_id = $1
+         WHERE e.user_id = $1 AND EXTRACT(YEAR FROM e.date) = $2 AND EXTRACT(MONTH FROM e.date) = $3
          GROUP BY t.id, t.name, t.color`,
-        [year, month]
+        basicParams
       ),
       query<{ day: string; income: string; expense: string }>(
         `SELECT
@@ -68,36 +74,36 @@ export async function getMonthlySummary(req: Request, res: Response, next: NextF
           COALESCE(i.total, 0) + COALESCE(sg.total, 0) as income,
           COALESCE(e.total, 0) + COALESCE(st.total, 0) as expense
         FROM generate_series(
-          $1::date,
-          ($1::date + INTERVAL '1 month' - INTERVAL '1 day'),
+          $2::date,
+          ($2::date + INTERVAL '1 month' - INTERVAL '1 day'),
           '1 day'::interval
         ) AS d
         LEFT JOIN (
           SELECT date, SUM(amount) as total FROM incomes
-          WHERE EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3
+          WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $3 AND EXTRACT(MONTH FROM date) = $4
           GROUP BY date
         ) i ON i.date = d::date
         LEFT JOIN (
           SELECT date, SUM(amount) as total FROM expenses
-          WHERE EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3
+          WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $3 AND EXTRACT(MONTH FROM date) = $4
           GROUP BY date
         ) e ON e.date = d::date
         LEFT JOIN (
           SELECT s.date, SUM(s.amount) as total
           FROM loan_settlements s
-          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given'
-          WHERE EXTRACT(YEAR FROM s.date) = $2 AND EXTRACT(MONTH FROM s.date) = $3
+          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+          WHERE EXTRACT(YEAR FROM s.date) = $3 AND EXTRACT(MONTH FROM s.date) = $4
           GROUP BY s.date
         ) sg ON sg.date = d::date
         LEFT JOIN (
           SELECT s.date, SUM(s.amount) as total
           FROM loan_settlements s
-          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-          WHERE EXTRACT(YEAR FROM s.date) = $2 AND EXTRACT(MONTH FROM s.date) = $3
+          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+          WHERE EXTRACT(YEAR FROM s.date) = $3 AND EXTRACT(MONTH FROM s.date) = $4
           GROUP BY s.date
         ) st ON st.date = d::date
         ORDER BY d`,
-        [monthStart, year, month]
+        dailyParams
       ),
     ]);
 

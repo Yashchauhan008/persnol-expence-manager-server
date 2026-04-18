@@ -3,7 +3,10 @@ import { query } from '../../../service/database';
 
 export async function getDailySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+
+    const params = [userId, date];
 
     const [
       incomeResult,
@@ -15,43 +18,43 @@ export async function getDailySummary(req: Request, res: Response, next: NextFun
       tagResult,
     ] = await Promise.all([
       query<{ total: string }>(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM incomes WHERE date = $1',
-        [date]
+        'SELECT COALESCE(SUM(amount), 0) as total FROM incomes WHERE user_id = $1 AND date = $2',
+        params
       ),
       query<{ total: string }>(
-        'SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE date = $1',
-        [date]
+        'SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1 AND date = $2',
+        params
       ),
       query<{ total: string }>(
-        "SELECT COALESCE(SUM(amount), 0) as total FROM loans WHERE type = 'given' AND date = $1",
-        [date]
+        "SELECT COALESCE(SUM(amount), 0) as total FROM loans WHERE user_id = $1 AND type = 'given' AND date = $2",
+        params
       ),
       query<{ total: string }>(
-        "SELECT COALESCE(SUM(amount), 0) as total FROM loans WHERE type = 'taken' AND date = $1",
-        [date]
-      ),
-      query<{ total: string }>(
-        `SELECT COALESCE(SUM(s.amount), 0) as total
-         FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given'
-         WHERE s.date = $1`,
-        [date]
+        "SELECT COALESCE(SUM(amount), 0) as total FROM loans WHERE user_id = $1 AND type = 'taken' AND date = $2",
+        params
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(s.amount), 0) as total
          FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-         WHERE s.date = $1`,
-        [date]
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+         WHERE s.date = $2`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(s.amount), 0) as total
+         FROM loan_settlements s
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+         WHERE s.date = $2`,
+        params
       ),
       query<{ tag_id: string; tag_name: string; color: string; total: string }>(
         `SELECT t.id as tag_id, t.name as tag_name, t.color, COALESCE(SUM(e.amount), 0) as total
          FROM expenses e
          JOIN expense_tags et ON e.id = et.expense_id
-         JOIN tags t ON et.tag_id = t.id
-         WHERE e.date = $1
+         JOIN tags t ON et.tag_id = t.id AND t.user_id = $1
+         WHERE e.user_id = $1 AND e.date = $2
          GROUP BY t.id, t.name, t.color`,
-        [date]
+        params
       ),
     ]);
 

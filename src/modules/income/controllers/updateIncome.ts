@@ -4,6 +4,7 @@ import { ServerError } from '../../../core/ServerError.class';
 
 export async function updateIncome(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const { amount, source, note, date } = req.body as {
       amount?: number; source?: string; note?: string | null; date?: string;
@@ -19,17 +20,19 @@ export async function updateIncome(req: Request, res: Response, next: NextFuncti
     if (date !== undefined) { fields.push(`date = $${idx++}`); values.push(date); }
 
     if (fields.length === 0) {
-      const current = await query('SELECT * FROM incomes WHERE id = $1', [id]);
+      const current = await query('SELECT * FROM incomes WHERE id = $1 AND user_id = $2', [id, userId]);
       if (current.rowCount === 0) throw new ServerError(404, 'NOT_FOUND', 'Income not found');
       res.json({ success: true, data: current.rows[0] });
       return;
     }
 
     fields.push(`updated_at = NOW()`);
-    values.push(id);
+    const idPlaceholder = idx;
+    const userPlaceholder = idx + 1;
+    values.push(id, userId);
 
     const result = await query(
-      `UPDATE incomes SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE incomes SET ${fields.join(', ')} WHERE id = $${idPlaceholder} AND user_id = $${userPlaceholder} RETURNING *`,
       values
     );
 

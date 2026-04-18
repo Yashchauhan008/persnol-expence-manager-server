@@ -4,6 +4,7 @@ import { ServerError } from '../../../core/ServerError.class';
 
 export async function getExpense(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const result = await query(
       `SELECT
@@ -23,9 +24,9 @@ export async function getExpense(req: Request, res: Response, next: NextFunction
       FROM expenses e
       LEFT JOIN expense_tags et ON e.id = et.expense_id
       LEFT JOIN tags t ON et.tag_id = t.id
-      WHERE e.id = $1
+      WHERE e.id = $1 AND e.user_id = $2
       GROUP BY e.id, e.amount, e.title, e.note, e.date, e.created_at, e.updated_at`,
-      [id]
+      [id, userId]
     );
 
     if (result.rowCount === 0) {

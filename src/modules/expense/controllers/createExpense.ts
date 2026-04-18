@@ -1,18 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
 import { getClient } from '../../../service/database';
+import { ServerError } from '../../../core/ServerError.class';
+import { ErrorCode } from '../../../config/errorCode';
 
 export async function createExpense(req: Request, res: Response, next: NextFunction): Promise<void> {
   const client = await getClient();
   try {
+    const userId = req.user!.id;
     const { amount, title, note, date, tag_ids = [] } = req.body as {
       amount: number; title: string; note?: string; date: string; tag_ids: string[];
     };
 
     await client.query('BEGIN');
 
+    if (tag_ids.length > 0) {
+      const tagCheck = await client.query<{ c: string }>(
+        `SELECT COUNT(*)::text AS c FROM tags WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+        [userId, tag_ids]
+      );
+      const count = parseInt(tagCheck.rows[0]?.c || '0', 10);
+      if (count !== tag_ids.length) {
+        throw new ServerError(400, ErrorCode.BAD_REQUEST, 'One or more tags are invalid');
+      }
+    }
+
     const expenseResult = await client.query(
-      'INSERT INTO expenses (amount, title, note, date) VALUES ($1, $2, $3, $4) RETURNING *',
-      [amount, title, note || null, date]
+      `INSERT INTO expenses (amount, title, note, date, user_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [amount, title, note || null, date, userId]
     );
     const expense = expenseResult.rows[0];
 

@@ -3,11 +3,12 @@ import { query } from '../../../service/database';
 
 export async function listLoans(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { type, status } = req.query as { type?: string; status?: string };
 
-    const conditions: string[] = [];
-    const values: unknown[] = [];
-    let p = 1;
+    const conditions: string[] = ['user_id = $1'];
+    const values: unknown[] = [userId];
+    let p = 2;
     if (type) {
       conditions.push(`type = $${p++}`);
       values.push(type);
@@ -16,7 +17,7 @@ export async function listLoans(req: Request, res: Response, next: NextFunction)
       conditions.push(`status = $${p++}`);
       values.push(status);
     }
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const [result, sumResult] = await Promise.all([
       query(

@@ -4,6 +4,7 @@ import { ServerError } from '../../../core/ServerError.class';
 
 export async function updateTag(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const { name, color } = req.body as { name?: string; color?: string };
 
@@ -20,10 +21,12 @@ export async function updateTag(req: Request, res: Response, next: NextFunction)
     }
 
     fields.push(`updated_at = NOW()`);
-    values.push(id);
+    const idPlaceholder = idx;
+    const userPlaceholder = idx + 1;
+    values.push(id, userId);
 
     const result = await query(
-      `UPDATE tags SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE tags SET ${fields.join(', ')} WHERE id = $${idPlaceholder} AND user_id = $${userPlaceholder} RETURNING *`,
       values
     );
 

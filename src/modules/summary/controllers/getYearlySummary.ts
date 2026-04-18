@@ -3,7 +3,10 @@ import { query } from '../../../service/database';
 
 export async function getYearlySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const year = parseInt((req.query.year as string) || String(new Date().getFullYear()), 10);
+
+    const params = [userId, year];
 
     const [
       incomeResult,
@@ -16,45 +19,47 @@ export async function getYearlySummary(req: Request, res: Response, next: NextFu
       monthlyResult,
     ] = await Promise.all([
       query<{ total: string }>(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM incomes WHERE EXTRACT(YEAR FROM date) = $1`,
-        [year]
+        `SELECT COALESCE(SUM(amount), 0) as total FROM incomes
+         WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2`,
+        params
       ),
       query<{ total: string }>(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE EXTRACT(YEAR FROM date) = $1`,
-        [year]
-      ),
-      query<{ total: string }>(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM loans
-         WHERE type = 'given' AND EXTRACT(YEAR FROM date) = $1`,
-        [year]
+        `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+         WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2`,
+        params
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(amount), 0) as total FROM loans
-         WHERE type = 'taken' AND EXTRACT(YEAR FROM date) = $1`,
-        [year]
+         WHERE user_id = $1 AND type = 'given' AND EXTRACT(YEAR FROM date) = $2`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM loans
+         WHERE user_id = $1 AND type = 'taken' AND EXTRACT(YEAR FROM date) = $2`,
+        params
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(s.amount), 0) as total
          FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given'
-         WHERE EXTRACT(YEAR FROM s.date) = $1`,
-        [year]
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+         WHERE EXTRACT(YEAR FROM s.date) = $2`,
+        params
       ),
       query<{ total: string }>(
         `SELECT COALESCE(SUM(s.amount), 0) as total
          FROM loan_settlements s
-         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-         WHERE EXTRACT(YEAR FROM s.date) = $1`,
-        [year]
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+         WHERE EXTRACT(YEAR FROM s.date) = $2`,
+        params
       ),
       query<{ tag_id: string; tag_name: string; color: string; total: string }>(
         `SELECT t.id as tag_id, t.name as tag_name, t.color, COALESCE(SUM(e.amount), 0) as total
          FROM expenses e
          JOIN expense_tags et ON e.id = et.expense_id
-         JOIN tags t ON et.tag_id = t.id
-         WHERE EXTRACT(YEAR FROM e.date) = $1
+         JOIN tags t ON et.tag_id = t.id AND t.user_id = $1
+         WHERE e.user_id = $1 AND EXTRACT(YEAR FROM e.date) = $2
          GROUP BY t.id, t.name, t.color`,
-        [year]
+        params
       ),
       query<{ month: number; income: string; expense: string }>(
         `SELECT m.month,
@@ -63,28 +68,28 @@ export async function getYearlySummary(req: Request, res: Response, next: NextFu
         FROM generate_series(1, 12) AS m(month)
         LEFT JOIN (
           SELECT EXTRACT(MONTH FROM date)::int as month, SUM(amount) as total
-          FROM incomes WHERE EXTRACT(YEAR FROM date) = $1 GROUP BY month
+          FROM incomes WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2 GROUP BY month
         ) i ON i.month = m.month
         LEFT JOIN (
           SELECT EXTRACT(MONTH FROM date)::int as month, SUM(amount) as total
-          FROM expenses WHERE EXTRACT(YEAR FROM date) = $1 GROUP BY month
+          FROM expenses WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $2 GROUP BY month
         ) e ON e.month = m.month
         LEFT JOIN (
           SELECT EXTRACT(MONTH FROM s.date)::int as month, SUM(s.amount) as total
           FROM loan_settlements s
-          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given'
-          WHERE EXTRACT(YEAR FROM s.date) = $1
+          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+          WHERE EXTRACT(YEAR FROM s.date) = $2
           GROUP BY month
         ) sg ON sg.month = m.month
         LEFT JOIN (
           SELECT EXTRACT(MONTH FROM s.date)::int as month, SUM(s.amount) as total
           FROM loan_settlements s
-          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-          WHERE EXTRACT(YEAR FROM s.date) = $1
+          INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+          WHERE EXTRACT(YEAR FROM s.date) = $2
           GROUP BY month
         ) st ON st.month = m.month
         ORDER BY m.month`,
-        [year]
+        params
       ),
     ]);
 

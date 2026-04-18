@@ -3,6 +3,7 @@ import { query } from '../../../service/database';
 
 export async function createLoan(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const { type, person_name, amount, note, date, due_date } = req.body as {
       type: 'given' | 'taken';
       person_name: string;
@@ -13,9 +14,9 @@ export async function createLoan(req: Request, res: Response, next: NextFunction
     };
 
     const result = await query(
-      `INSERT INTO loans (type, person_name, amount, remaining_amount, note, date, due_date)
-       VALUES ($1, $2, $3, $3, $4, $5, $6) RETURNING *`,
-      [type, person_name, amount, note || null, date, due_date || null]
+      `INSERT INTO loans (type, person_name, amount, remaining_amount, note, date, due_date, user_id)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7) RETURNING *`,
+      [type, person_name, amount, note || null, date, due_date || null, userId]
     );
 
     res.status(201).json({ success: true, data: result.rows[0] });

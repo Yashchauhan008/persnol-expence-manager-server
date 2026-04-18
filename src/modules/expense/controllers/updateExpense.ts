@@ -1,16 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
 import { getClient } from '../../../service/database';
 import { ServerError } from '../../../core/ServerError.class';
+import { ErrorCode } from '../../../config/errorCode';
 
 export async function updateExpense(req: Request, res: Response, next: NextFunction): Promise<void> {
   const client = await getClient();
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const { amount, title, note, date, tag_ids } = req.body as {
       amount?: number; title?: string; note?: string | null; date?: string; tag_ids?: string[];
     };
 
     await client.query('BEGIN');
+
+    if (tag_ids !== undefined && tag_ids.length > 0) {
+      const tagCheck = await client.query<{ c: string }>(
+        `SELECT COUNT(*)::text AS c FROM tags WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+        [userId, tag_ids]
+      );
+      const count = parseInt(tagCheck.rows[0]?.c || '0', 10);
+      if (count !== tag_ids.length) {
+        throw new ServerError(400, ErrorCode.BAD_REQUEST, 'One or more tags are invalid');
+      }
+    }
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -23,16 +36,21 @@ export async function updateExpense(req: Request, res: Response, next: NextFunct
 
     if (fields.length > 0) {
       fields.push(`updated_at = NOW()`);
-      values.push(id);
+      const idPlaceholder = idx;
+      const userPlaceholder = idx + 1;
+      values.push(id, userId);
       const result = await client.query(
-        `UPDATE expenses SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id`,
+        `UPDATE expenses SET ${fields.join(', ')} WHERE id = $${idPlaceholder} AND user_id = $${userPlaceholder} RETURNING id`,
         values
       );
       if (result.rowCount === 0) {
         throw new ServerError(404, 'NOT_FOUND', 'Expense not found');
       }
     } else {
-      const check = await client.query('SELECT id FROM expenses WHERE id = $1', [id]);
+      const check = await client.query(
+        'SELECT id FROM expenses WHERE id = $1 AND user_id = $2',
+        [id, userId]
+      );
       if (check.rowCount === 0) throw new ServerError(404, 'NOT_FOUND', 'Expense not found');
     }
 
@@ -57,9 +75,9 @@ export async function updateExpense(req: Request, res: Response, next: NextFunct
       FROM expenses e
       LEFT JOIN expense_tags et ON e.id = et.expense_id
       LEFT JOIN tags t ON et.tag_id = t.id
-      WHERE e.id = $1
+      WHERE e.id = $1 AND e.user_id = $2
       GROUP BY e.id`,
-      [id]
+      [id, userId]
     );
 
     res.json({ success: true, data: fullResult.rows[0] });

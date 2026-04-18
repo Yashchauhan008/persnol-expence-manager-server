@@ -5,14 +5,15 @@ import { ServerError } from '../../../core/ServerError.class';
 export async function settlePartialLoan(req: Request, res: Response, next: NextFunction): Promise<void> {
   const client = await getClient();
   try {
+    const userId = req.user!.id;
     const { id } = req.params;
     const { amount, note, date } = req.body as { amount: number; note?: string; date: string };
 
     await client.query('BEGIN');
 
     const loanResult = await client.query(
-      'SELECT * FROM loans WHERE id = $1 FOR UPDATE',
-      [id]
+      'SELECT * FROM loans WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [id, userId]
     );
 
     if (loanResult.rowCount === 0) {
@@ -42,8 +43,8 @@ export async function settlePartialLoan(req: Request, res: Response, next: NextF
     const newStatus = newRemaining === 0 ? 'settled' : 'partial';
 
     await client.query(
-      `UPDATE loans SET remaining_amount = $1, status = $2, updated_at = NOW() WHERE id = $3`,
-      [newRemaining, newStatus, id]
+      `UPDATE loans SET remaining_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND user_id = $4`,
+      [newRemaining, newStatus, id, userId]
     );
 
     await client.query(
@@ -53,10 +54,13 @@ export async function settlePartialLoan(req: Request, res: Response, next: NextF
 
     await client.query('COMMIT');
 
-    const updatedLoan = await client.query('SELECT * FROM loans WHERE id = $1', [id]);
+    const updatedLoan = await client.query('SELECT * FROM loans WHERE id = $1 AND user_id = $2', [id, userId]);
     const settlements = await client.query(
-      'SELECT * FROM loan_settlements WHERE loan_id = $1 ORDER BY date ASC',
-      [id]
+      `SELECT s.* FROM loan_settlements s
+       INNER JOIN loans l ON l.id = s.loan_id AND l.user_id = $2
+       WHERE s.loan_id = $1
+       ORDER BY s.date ASC`,
+      [id, userId]
     );
 
     res.json({

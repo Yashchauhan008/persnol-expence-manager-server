@@ -1,42 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { query } from '../../../service/database';
 
-function buildExpenseDateWhere(from?: string, to?: string): { clause: string; params: unknown[] } {
-  const parts: string[] = [];
-  const params: unknown[] = [];
-  let i = 1;
-  if (from) {
-    parts.push(`e.date >= $${i}::date`);
-    params.push(from);
-    i += 1;
-  }
-  if (to) {
-    parts.push(`e.date <= $${i}::date`);
-    params.push(to);
-    i += 1;
-  }
-  const clause = parts.length ? `AND ${parts.join(' AND ')}` : '';
-  return { clause, params };
-}
-
-function buildSettlementDateWhere(from?: string, to?: string): { clause: string; params: unknown[] } {
-  const parts: string[] = [];
-  const params: unknown[] = [];
-  let i = 1;
-  if (from) {
-    parts.push(`s.date >= $${i}::date`);
-    params.push(from);
-    i += 1;
-  }
-  if (to) {
-    parts.push(`s.date <= $${i}::date`);
-    params.push(to);
-    i += 1;
-  }
-  const clause = parts.length ? `AND ${parts.join(' AND ')}` : '';
-  return { clause, params };
-}
-
 function parseNum(v: unknown): number {
   if (typeof v === 'number') return v;
   return parseFloat(String(v));
@@ -44,16 +8,33 @@ function parseNum(v: unknown): number {
 
 export async function listExpenses(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const userId = req.user!.id;
     const from = typeof req.query.from === 'string' ? req.query.from : undefined;
     const to = typeof req.query.to === 'string' ? req.query.to : undefined;
     const tagIdsRaw = typeof req.query.tag_ids === 'string' ? req.query.tag_ids : undefined;
     const tagIds = tagIdsRaw ? tagIdsRaw.split(',').filter(Boolean) : [];
 
-    const wExp = buildExpenseDateWhere(from, to);
-    const wSet = buildSettlementDateWhere(from, to);
+    const datePartsE: string[] = [];
+    const datePartsS: string[] = [];
+    const dateParams: unknown[] = [];
+    let pi = 2;
+    if (from) {
+      datePartsE.push(`e.date >= $${pi}::date`);
+      datePartsS.push(`s.date >= $${pi}::date`);
+      dateParams.push(from);
+      pi += 1;
+    }
+    if (to) {
+      datePartsE.push(`e.date <= $${pi}::date`);
+      datePartsS.push(`s.date <= $${pi}::date`);
+      dateParams.push(to);
+      pi += 1;
+    }
+    const wExpClause = datePartsE.length ? `AND ${datePartsE.join(' AND ')}` : '';
+    const wSetClause = datePartsS.length ? `AND ${datePartsS.join(' AND ')}` : '';
 
     let tagClause = '';
-    const expenseParams: unknown[] = [...wExp.params];
+    const expenseParams: unknown[] = [userId, ...dateParams];
     if (tagIds.length > 0) {
       const p = expenseParams.length + 1;
       tagClause = `AND EXISTS (
@@ -82,8 +63,8 @@ export async function listExpenses(req: Request, res: Response, next: NextFuncti
       FROM expenses e
       LEFT JOIN expense_tags et ON e.id = et.expense_id
       LEFT JOIN tags t ON et.tag_id = t.id
-      WHERE 1 = 1
-      ${wExp.clause}
+      WHERE e.user_id = $1
+      ${wExpClause}
       ${tagClause}
       GROUP BY e.id
       ORDER BY e.date DESC, e.created_at DESC
@@ -101,42 +82,39 @@ export async function listExpenses(req: Request, res: Response, next: NextFuncti
         'loan_repayment'::text AS entry_kind,
         '[]'::json AS tags
       FROM loan_settlements s
-      INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
+      INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
       WHERE 1 = 1
-      ${wSet.clause}
+      ${wSetClause}
       ORDER BY s.date DESC, s.created_at DESC
     `;
 
-    const sumExpSql = `SELECT COALESCE(SUM(e.amount), 0) AS total FROM expenses e WHERE 1=1 ${wExp.clause}`;
+    const sumExpSql = `SELECT COALESCE(SUM(e.amount), 0) AS total FROM expenses e WHERE e.user_id = $1 ${wExpClause}`;
     const sumSetSql = `
       SELECT COALESCE(SUM(s.amount), 0) AS total
       FROM loan_settlements s
-      INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken'
-      WHERE 1=1 ${wSet.clause}
+      INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+      WHERE 1=1 ${wSetClause}
     `;
 
     const sumTaggedSql = `
       SELECT COALESCE(SUM(e.amount), 0) AS total
       FROM expenses e
-      WHERE 1=1
-      ${wExp.clause}
+      WHERE e.user_id = $1
+      ${wExpClause}
       ${tagClause}
     `;
 
-    const expenseParamsForSum = [...wExp.params];
-    if (tagIds.length > 0) {
-      expenseParamsForSum.push(tagIds);
-    }
+    const baseDateParams = [userId, ...dateParams];
 
     const [expenseRows, sumExp, sumSet] = await Promise.all([
       query<Record<string, unknown>>(expenseSql, expenseParams),
-      query<{ total: string }>(sumExpSql, wExp.params),
-      query<{ total: string }>(sumSetSql, wSet.params),
+      query<{ total: string }>(sumExpSql, baseDateParams),
+      query<{ total: string }>(sumSetSql, baseDateParams),
     ]);
 
     let settlementRows: { rows: Record<string, unknown>[] } = { rows: [] };
     if (tagIds.length === 0) {
-      settlementRows = await query<Record<string, unknown>>(settlementSql, wSet.params);
+      settlementRows = await query<Record<string, unknown>>(settlementSql, baseDateParams);
     }
 
     const merged = [...expenseRows.rows, ...settlementRows.rows].sort((a, b) => {
@@ -153,7 +131,7 @@ export async function listExpenses(req: Request, res: Response, next: NextFuncti
 
     let sumTaggedAmount: number | undefined;
     if (tagIds.length > 0) {
-      const tr = await query<{ total: string }>(sumTaggedSql, expenseParamsForSum);
+      const tr = await query<{ total: string }>(sumTaggedSql, expenseParams);
       sumTaggedAmount = parseNum(tr.rows[0]?.total);
     }
 

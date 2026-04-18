@@ -1,0 +1,16 @@
+services:
+  expense-manager-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: always
+    image: yashchauhan008/expense-manager-server:latest
+    platform: linux/amd64
+    container_name: expense-manager-server
+    env_file:
+      - ./.env.prod
+    ports:
+      - '3005:3005'
+    command: >
+      sh -c "dbmate up && npm run start"
+

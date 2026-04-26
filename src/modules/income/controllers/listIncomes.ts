@@ -36,6 +36,7 @@ export async function listIncomes(req: Request, res: Response, next: NextFunctio
     const incomeSql = `
       SELECT i.id, i.amount, i.source, i.note,
         to_char(i.date::date, 'YYYY-MM-DD') AS date,
+        i.chart_visibility,
         i.created_at, i.updated_at,
         'income'::text AS entry_kind
       FROM incomes i
@@ -49,6 +50,7 @@ export async function listIncomes(req: Request, res: Response, next: NextFunctio
         ('Loan recovery · ' || l.person_name) AS source,
         s.note,
         to_char(s.date::date, 'YYYY-MM-DD') AS date,
+        true AS chart_visibility,
         s.created_at, s.created_at AS updated_at,
         'loan_recovery'::text AS entry_kind
       FROM loan_settlements s

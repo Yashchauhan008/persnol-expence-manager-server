@@ -80,12 +80,18 @@ export async function getMonthlySummary(req: Request, res: Response, next: NextF
         ) AS d
         LEFT JOIN (
           SELECT date, SUM(amount) as total FROM incomes
-          WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $3 AND EXTRACT(MONTH FROM date) = $4
+          WHERE user_id = $1
+            AND chart_visibility = true
+            AND EXTRACT(YEAR FROM date) = $3
+            AND EXTRACT(MONTH FROM date) = $4
           GROUP BY date
         ) i ON i.date = d::date
         LEFT JOIN (
           SELECT date, SUM(amount) as total FROM expenses
-          WHERE user_id = $1 AND EXTRACT(YEAR FROM date) = $3 AND EXTRACT(MONTH FROM date) = $4
+          WHERE user_id = $1
+            AND chart_visibility = true
+            AND EXTRACT(YEAR FROM date) = $3
+            AND EXTRACT(MONTH FROM date) = $4
           GROUP BY date
         ) e ON e.date = d::date
         LEFT JOIN (

@@ -8,8 +8,8 @@ export async function updateExpense(req: Request, res: Response, next: NextFunct
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const { amount, title, note, date, tag_ids } = req.body as {
-      amount?: number; title?: string; note?: string | null; date?: string; tag_ids?: string[];
+    const { amount, title, note, date, tag_ids, chart_visibility } = req.body as {
+      amount?: number; title?: string; note?: string | null; date?: string; tag_ids?: string[]; chart_visibility?: boolean;
     };
 
     await client.query('BEGIN');
@@ -33,6 +33,7 @@ export async function updateExpense(req: Request, res: Response, next: NextFunct
     if (title !== undefined) { fields.push(`title = $${idx++}`); values.push(title); }
     if (note !== undefined) { fields.push(`note = $${idx++}`); values.push(note); }
     if (date !== undefined) { fields.push(`date = $${idx++}`); values.push(date); }
+    if (chart_visibility !== undefined) { fields.push(`chart_visibility = $${idx++}`); values.push(chart_visibility); }
 
     if (fields.length > 0) {
       fields.push(`updated_at = NOW()`);

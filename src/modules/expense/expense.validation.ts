@@ -6,6 +6,7 @@ export const createExpenseSchema = z.object({
   note: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
   tag_ids: z.array(z.string().uuid()).default([]),
+  chart_visibility: z.boolean().default(true),
 });
 
 export const updateExpenseSchema = z.object({
@@ -14,6 +15,7 @@ export const updateExpenseSchema = z.object({
   note: z.string().optional().nullable(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   tag_ids: z.array(z.string().uuid()).optional(),
+  chart_visibility: z.boolean().optional(),
 });
 
 export const expenseIdSchema = z.object({

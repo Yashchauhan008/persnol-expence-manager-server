@@ -7,8 +7,8 @@ export async function createExpense(req: Request, res: Response, next: NextFunct
   const client = await getClient();
   try {
     const userId = req.user!.id;
-    const { amount, title, note, date, tag_ids = [] } = req.body as {
-      amount: number; title: string; note?: string; date: string; tag_ids: string[];
+    const { amount, title, note, date, tag_ids = [], chart_visibility = true } = req.body as {
+      amount: number; title: string; note?: string; date: string; tag_ids: string[]; chart_visibility?: boolean;
     };
 
     await client.query('BEGIN');
@@ -25,9 +25,9 @@ export async function createExpense(req: Request, res: Response, next: NextFunct
     }
 
     const expenseResult = await client.query(
-      `INSERT INTO expenses (amount, title, note, date, user_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [amount, title, note || null, date, userId]
+      `INSERT INTO expenses (amount, title, note, date, user_id, chart_visibility)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [amount, title, note || null, date, userId, chart_visibility]
     );
     const expense = expenseResult.rows[0];
 

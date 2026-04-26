@@ -6,8 +6,8 @@ export async function updateIncome(req: Request, res: Response, next: NextFuncti
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const { amount, source, note, date } = req.body as {
-      amount?: number; source?: string; note?: string | null; date?: string;
+    const { amount, source, note, date, chart_visibility } = req.body as {
+      amount?: number; source?: string; note?: string | null; date?: string; chart_visibility?: boolean;
     };
 
     const fields: string[] = [];
@@ -18,6 +18,7 @@ export async function updateIncome(req: Request, res: Response, next: NextFuncti
     if (source !== undefined) { fields.push(`source = $${idx++}`); values.push(source); }
     if (note !== undefined) { fields.push(`note = $${idx++}`); values.push(note); }
     if (date !== undefined) { fields.push(`date = $${idx++}`); values.push(date); }
+    if (chart_visibility !== undefined) { fields.push(`chart_visibility = $${idx++}`); values.push(chart_visibility); }
 
     if (fields.length === 0) {
       const current = await query('SELECT * FROM incomes WHERE id = $1 AND user_id = $2', [id, userId]);

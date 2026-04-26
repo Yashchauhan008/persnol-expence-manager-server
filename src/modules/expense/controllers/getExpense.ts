@@ -13,6 +13,7 @@ export async function getExpense(req: Request, res: Response, next: NextFunction
         e.title,
         e.note,
         to_char(e.date::date, 'YYYY-MM-DD') AS date,
+        e.chart_visibility,
         e.created_at,
         e.updated_at,
         COALESCE(
@@ -25,7 +26,7 @@ export async function getExpense(req: Request, res: Response, next: NextFunction
       LEFT JOIN expense_tags et ON e.id = et.expense_id
       LEFT JOIN tags t ON et.tag_id = t.id
       WHERE e.id = $1 AND e.user_id = $2
-      GROUP BY e.id, e.amount, e.title, e.note, e.date, e.created_at, e.updated_at`,
+      GROUP BY e.id, e.amount, e.title, e.note, e.date, e.chart_visibility, e.created_at, e.updated_at`,
       [id, userId]
     );
 

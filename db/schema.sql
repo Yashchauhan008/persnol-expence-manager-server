@@ -15,20 +15,6 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
---
--- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
-
-
---
--- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
-
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -56,43 +42,7 @@ CREATE TABLE public.expenses (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     user_id uuid NOT NULL,
-    goal_id uuid,
     chart_visibility boolean DEFAULT true NOT NULL
-);
-
-
---
--- Name: goal_contributions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.goal_contributions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    goal_id uuid NOT NULL,
-    user_id uuid NOT NULL,
-    expense_id uuid NOT NULL,
-    amount numeric(12,2) NOT NULL,
-    note text,
-    date date DEFAULT CURRENT_DATE NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT goal_contributions_amount_check CHECK ((amount > (0)::numeric))
-);
-
-
---
--- Name: goals; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.goals (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id uuid NOT NULL,
-    title character varying(150) NOT NULL,
-    target_amount numeric(12,2) NOT NULL,
-    start_date date DEFAULT CURRENT_DATE NOT NULL,
-    due_date date,
-    note text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT goals_target_amount_check CHECK ((target_amount > (0)::numeric))
 );
 
 
@@ -214,22 +164,6 @@ ALTER TABLE ONLY public.expenses
 
 
 --
--- Name: goal_contributions goal_contributions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goal_contributions
-    ADD CONSTRAINT goal_contributions_pkey PRIMARY KEY (id);
-
-
---
--- Name: goals goals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goals
-    ADD CONSTRAINT goals_pkey PRIMARY KEY (id);
-
-
---
 -- Name: incomes incomes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -293,45 +227,10 @@ CREATE INDEX idx_expenses_date ON public.expenses USING btree (date);
 
 
 --
--- Name: idx_expenses_goal_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_expenses_goal_id ON public.expenses USING btree (goal_id);
-
-
---
 -- Name: idx_expenses_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_expenses_user_id ON public.expenses USING btree (user_id);
-
-
---
--- Name: idx_goal_contributions_goal_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_goal_contributions_goal_id ON public.goal_contributions USING btree (goal_id);
-
-
---
--- Name: idx_goal_contributions_user_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_goal_contributions_user_id ON public.goal_contributions USING btree (user_id);
-
-
---
--- Name: idx_goals_due_date; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_goals_due_date ON public.goals USING btree (due_date);
-
-
---
--- Name: idx_goals_user_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_goals_user_id ON public.goals USING btree (user_id);
 
 
 --
@@ -435,51 +334,11 @@ ALTER TABLE ONLY public.expense_tags
 
 
 --
--- Name: expenses expenses_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.expenses
-    ADD CONSTRAINT expenses_goal_id_fkey FOREIGN KEY (goal_id) REFERENCES public.goals(id) ON DELETE SET NULL;
-
-
---
 -- Name: expenses expenses_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.expenses
     ADD CONSTRAINT expenses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: goal_contributions goal_contributions_expense_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goal_contributions
-    ADD CONSTRAINT goal_contributions_expense_id_fkey FOREIGN KEY (expense_id) REFERENCES public.expenses(id) ON DELETE CASCADE;
-
-
---
--- Name: goal_contributions goal_contributions_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goal_contributions
-    ADD CONSTRAINT goal_contributions_goal_id_fkey FOREIGN KEY (goal_id) REFERENCES public.goals(id) ON DELETE CASCADE;
-
-
---
--- Name: goal_contributions goal_contributions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goal_contributions
-    ADD CONSTRAINT goal_contributions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: goals goals_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.goals
-    ADD CONSTRAINT goals_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -546,6 +405,4 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260418000001'),
     ('20260418120001'),
     ('20260419000001'),
-    ('20260419010001'),
-    ('20260419140001'),
     ('20260426124001');

@@ -1,0 +1,123 @@
+import { Request, Response, NextFunction } from 'express';
+import { query } from '../../../service/database';
+
+export async function getLifetimeSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.id;
+
+    const params = [userId];
+
+    const [
+      incomeResult,
+      expenseResult,
+      newLoansGivenResult,
+      newLoansTakenResult,
+      settlementsGivenResult,
+      settlementsTakenResult,
+      tagResult,
+      monthlyResult,
+    ] = await Promise.all([
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM incomes
+         WHERE user_id = $1`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+         WHERE user_id = $1`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM loans
+         WHERE user_id = $1 AND type = 'given'`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM loans
+         WHERE user_id = $1 AND type = 'taken'`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(s.amount), 0) as total
+         FROM loan_settlements s
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1`,
+        params
+      ),
+      query<{ total: string }>(
+        `SELECT COALESCE(SUM(s.amount), 0) as total
+         FROM loan_settlements s
+         INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1`,
+        params
+      ),
+      query<{ tag_id: string; tag_name: string; color: string; total: string }>(
+        `SELECT t.id as tag_id, t.name as tag_name, t.color, COALESCE(SUM(e.amount), 0) as total
+         FROM expenses e
+         JOIN expense_tags et ON e.id = et.expense_id
+         JOIN tags t ON et.tag_id = t.id AND t.user_id = $1
+         WHERE e.user_id = $1
+         GROUP BY t.id, t.name, t.color`,
+        params
+      ),
+      query<{ label: string; income: string; expense: string }>(
+        `SELECT 
+            TO_CHAR(date_trunc('month', d.date), 'YYYY-MM') as label,
+            SUM(income) as income,
+            SUM(expense) as expense
+          FROM (
+            SELECT date, amount as income, 0::numeric as expense FROM incomes WHERE user_id = $1
+            UNION ALL
+            SELECT date, 0::numeric as income, amount as expense FROM expenses WHERE user_id = $1
+            UNION ALL
+            SELECT s.date, s.amount as income, 0::numeric as expense FROM loan_settlements s 
+            INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'given' AND l.user_id = $1
+            UNION ALL
+            SELECT s.date, 0::numeric as income, s.amount as expense FROM loan_settlements s 
+            INNER JOIN loans l ON l.id = s.loan_id AND l.type = 'taken' AND l.user_id = $1
+          ) d
+          GROUP BY label
+          ORDER BY label`,
+        params
+      ),
+    ]);
+
+    const totalIncome = parseFloat(incomeResult.rows[0].total);
+    const totalExpense = parseFloat(expenseResult.rows[0].total);
+    const newLoansGiven = parseFloat(newLoansGivenResult.rows[0].total);
+    const newLoansTaken = parseFloat(newLoansTakenResult.rows[0].total);
+    const settlementsGiven = parseFloat(settlementsGivenResult.rows[0].total);
+    const settlementsTaken = parseFloat(settlementsTakenResult.rows[0].total);
+
+    const net =
+      totalIncome -
+      totalExpense -
+      newLoansGiven +
+      settlementsGiven -
+      settlementsTaken;
+
+    res.json({
+      success: true,
+      data: {
+        total_income: totalIncome,
+        total_expense: totalExpense,
+        net,
+        total_loans_given: newLoansGiven,
+        total_loans_taken: newLoansTaken,
+        total_settled_given: settlementsGiven,
+        total_settled_taken: settlementsTaken,
+        expenses_by_tag: tagResult.rows.map(r => ({
+          tag_id: r.tag_id,
+          tag_name: r.tag_name,
+          color: r.color,
+          total: parseFloat(r.total),
+        })),
+        daily_breakdown: monthlyResult.rows.map(r => ({
+          label: r.label,
+          income: parseFloat(r.income),
+          expense: parseFloat(r.expense),
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}

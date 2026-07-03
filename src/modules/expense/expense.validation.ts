@@ -9,6 +9,22 @@ export const createExpenseSchema = z.object({
   chart_visibility: z.boolean().default(true),
 });
 
+export const bulkCreateExpensesSchema = z.object({
+  expenses: z
+    .array(
+      z.object({
+        amount: z.number().positive('Amount must be positive'),
+        title: z.string().min(1, 'Title is required').max(255),
+        note: z.string().optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+        tags: z.array(z.string().trim().min(1).max(100)).default([]),
+        chart_visibility: z.boolean().default(true),
+      })
+    )
+    .min(1, 'At least one expense is required')
+    .max(500, 'Cannot import more than 500 expenses at once'),
+});
+
 export const updateExpenseSchema = z.object({
   amount: z.number().positive().optional(),
   title: z.string().min(1).max(255).optional(),
